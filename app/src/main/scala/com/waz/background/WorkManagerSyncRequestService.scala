@@ -29,7 +29,7 @@ import com.waz.api.impl.ErrorResponse
 import com.waz.api.impl.ErrorResponse.internalError
 import com.waz.model.sync.SyncJob.Priority
 import com.waz.model.sync.{SyncCommand, SyncRequest}
-import com.waz.model.{SyncId, UserId}
+import com.waz.model.{SyncId, Uid, UserId}
 import com.waz.service.NetworkModeService
 import com.waz.service.tracking.TrackingService
 import com.waz.sync.SyncHandler.RequestInfo
@@ -46,7 +46,7 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 import scala.util.control.{NoStackTrace, NonFatal}
 
-class WorkManagerSyncRequestService (implicit inj: Injector, cxt: Context, eventContext: EventContext) extends SyncRequestService with Injectable {
+class WorkManagerSyncRequestService(implicit inj: Injector, cxt: Context, eventContext: EventContext) extends SyncRequestService with Injectable {
 
   import WorkManagerSyncRequestService._
   import com.waz.threading.Threading.Implicits.Background
