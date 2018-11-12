@@ -47,7 +47,6 @@ import com.waz.service.images.ImageLoader
 import com.waz.service.messages.MessagesService
 import com.waz.service.push.GlobalNotificationsService
 import com.waz.service.tracking.TrackingService
-import com.waz.services.fcm.FetchJob
 import com.waz.services.gps.GoogleApiImpl
 import com.waz.services.websocket.WebSocketController
 import com.waz.sync.SyncHandler
@@ -343,9 +342,8 @@ class WireApplication extends MultiDexApplication with WireContext with Injectab
 
     JobManager.create(this).addJobCreator(new JobCreator {
       override def create(tag: String) =
-        if      (tag.contains(FetchJob.Tag))          new FetchJob
-        else if (tag.contains(PushTokenCheckJob.Tag)) new PushTokenCheckJob
-        else    null
+        if (tag.contains(PushTokenCheckJob.Tag)) new PushTokenCheckJob
+        else null
     })
 
     val prefs = GlobalPreferences(this)

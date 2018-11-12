@@ -29,7 +29,7 @@ import com.waz.api.impl.ErrorResponse
 import com.waz.api.impl.ErrorResponse.internalError
 import com.waz.model.sync.SyncJob.Priority
 import com.waz.model.sync.{SyncCommand, SyncRequest}
-import com.waz.model.{SyncId, Uid, UserId}
+import com.waz.model.{SyncId, UserId}
 import com.waz.service.NetworkModeService
 import com.waz.service.tracking.TrackingService
 import com.waz.sync.SyncHandler.RequestInfo
@@ -55,47 +55,75 @@ class WorkManagerSyncRequestService(implicit inj: Injector, cxt: Context, eventC
 
   override def addRequest(account:    UserId,
                           req:        SyncRequest,
-                          priority:   Int            = Priority.Normal,
-                          dependsOn:  Seq[SyncId]    = Nil,
-                          forceRetry: Boolean        = false,
-                          delay:      FiniteDuration = Duration.Zero) = {
-
-    val work = new OneTimeWorkRequest.Builder(classOf[SyncJobWorker])
-      .setConstraints(
-        new Constraints.Builder()
-          .setRequiredNetworkType(NetworkType.CONNECTED)
-          .build())
-      .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WorkRequest.MIN_BACKOFF_MILLIS, TimeUnit.MILLISECONDS)
-      .setInitialDelay(delay.toMillis, TimeUnit.MILLISECONDS)
-      .setInputData(
-        new Data.Builder()
-          .putString(AccountId, account.str)
-          .putString(SyncRequestCmd, req.cmd.name)
-          .putString(Json, SyncRequest.Encoder(req).toString)
-          .putLong(ScheduledTime, (inject[Clock].instant() + delay).toEpochMilli)
-          .build())
-      .addTag(account.str)
-      .addTag(req.cmd.name)
-      .build()
+                          children:   Seq[SyncRequest] = Seq.empty,
+                          priority:   Int              = Priority.Normal,
+                          dependsOn:  Seq[SyncId]      = Nil,
+                          forceRetry: Boolean          = false,
+                          delay:      FiniteDuration   = Duration.Zero) = {
 
     import SyncRequest._
+
+    def reqToWorkBuilder(req: SyncRequest): OneTimeWorkRequest.Builder = {
+
+      val networkConstraint = req match {
+        case _: Offline => NetworkType.NOT_REQUIRED
+        case _          => NetworkType.CONNECTED
+      }
+
+      new OneTimeWorkRequest.Builder(classOf[SyncJobWorker])
+        .setConstraints(
+          new Constraints.Builder()
+            .setRequiredNetworkType(networkConstraint)
+            .build())
+        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WorkRequest.MIN_BACKOFF_MILLIS, TimeUnit.MILLISECONDS)
+        .setInputData(
+          new Data.Builder()
+            .putString(AccountId, account.str)
+            .putString(SyncRequestCmd, req.cmd.name)
+            .putString(Json, SyncRequest.Encoder(req).toString)
+            .putLong(ScheduledTime, (inject[Clock].instant() + delay).toEpochMilli)
+            .build())
+        .addTag(account.str)
+        .addTag(req.cmd.name)
+    }
+
+    val headWork = reqToWorkBuilder(req)
+      .setInitialDelay(delay.toMillis, TimeUnit.MILLISECONDS)
+      .build()
+
+    val childWork = children.map(reqToWorkBuilder(_).build())
+
     val uniqueGroupName = req match {
       case r: RequestForConversation with Serialized => Some(r.convId.str)
       case r: RequestForUser         with Serialized => Some(r.userId.str)
-      case _ => None
+      case _: Serialized                             => Some(req.cmd.name)
+      case _                                         => None
+    }
+
+    val uniqueWorkPolicy = req match {
+      case _: SyncNotifications => ExistingWorkPolicy.REPLACE
+      case _                    => ExistingWorkPolicy.APPEND
     }
 
     implicit val logTag: LogTag = jobLogTag(account)
-    val commandTag = commandId(req.cmd, work.getId)
+    val commandTag = commandId(req.cmd, headWork.getId)
     verbose(s"$commandTag scheduling...")
 
+    val continuation = {
+      val head = uniqueGroupName.map(n => s"${account.str}--$n") match {
+        case Some(n) => wm.beginUniqueWork(n, uniqueWorkPolicy, headWork)
+        case None    => wm.beginWith(headWork)
+      }
+
+      childWork.foldLeft(head) { case (cont, w) =>
+        cont.`then`(w)
+      }
+    }
+
     Future {
-      (uniqueGroupName.map(n => s"${account.str}--$n") match {
-        case Some(n) => wm.beginUniqueWork(n, ExistingWorkPolicy.APPEND, work).enqueue()
-        case None    => wm.enqueue(work)
-      }).get()
+      continuation.enqueue().get()
       verbose(s"$commandTag scheduled successfully")
-      SyncId(work.getId.toString)
+      SyncId(headWork.getId.toString)
     }
   }
 
