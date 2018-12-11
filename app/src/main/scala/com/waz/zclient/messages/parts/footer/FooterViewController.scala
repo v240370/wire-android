@@ -22,8 +22,8 @@ import com.waz.ZLog.ImplicitTag._
 import com.waz.api.Message
 import com.waz.api.Message.Status
 import com.waz.model.{LocalInstant, MessageData}
-import com.waz.service.{NetworkModeService, ZMessaging}
 import com.waz.service.messages.{MessageAndLikes, MessagesService}
+import com.waz.service.{NetworkModeService, ZMessaging}
 import com.waz.threading.CancellableFuture
 import com.waz.utils._
 import com.waz.utils.events.{ClockSignal, EventContext, Signal}
@@ -32,9 +32,9 @@ import com.waz.zclient.conversation.ConversationController
 import com.waz.zclient.messages.MessageView.MsgBindOptions
 import com.waz.zclient.messages.{LikesController, UsersController}
 import com.waz.zclient.utils.ContextUtils._
-import com.waz.zclient.utils.ZTimeFormatter
+import com.waz.zclient.utils.Time.SameDayTimeStamp
 import com.waz.zclient.{Injectable, Injector, R}
-import org.threeten.bp.{DateTimeUtils, Instant}
+import org.threeten.bp.Instant
 
 import scala.concurrent.duration._
 
@@ -110,7 +110,7 @@ class FooterViewController(implicit inj: Injector, context: Context, ec: EventCo
     timeout     <- ephemeralTimeout
     isOffline   <- inject[NetworkModeService].isOnline.map(!_)
   } yield {
-    val timestamp = ZTimeFormatter.getSingleMessageTime(context, DateTimeUtils.toDate(msg.time.instant))
+    val timestamp = SameDayTimeStamp(msg.time.instant).string
     timeout match {
       case Some(t)                          => ephemeralTimeoutString(timestamp, t)
       case None if selfUserId == msg.userId => statusString(timestamp, msg, isGroup, isOffline)

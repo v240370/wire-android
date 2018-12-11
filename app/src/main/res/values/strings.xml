@@ -1243,5 +1243,7 @@
     <string name="reply_message_type_asset">ATTACHMENT</string>
     <string name="reply_message_type_unknown">You cannot see this message.</string>
 
-    <string name="quote_timestamp_message">Original message from %s</string>
+    <!--Two identical strings are needed for German translation-->
+    <string name="quote_timestamp_message_time">Original message from %s</string>
+    <string name="quote_timestamp_message_date">Original message from %s</string>
 </resources>
